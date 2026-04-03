@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { retry } from './retry';
 
-describe('V4 Integration', () => {
+describe('Retry Hedging', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });

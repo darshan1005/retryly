@@ -4,7 +4,7 @@ import { RetryBudget } from '../budget/retryBudget';
 import { CircuitBreaker } from '../circuit/breaker';
 import { fixedStrategy } from '../strategies/fixed';
 
-describe('V3 Integration (Budget + Circuit Breaker)', () => {
+describe('Retry Budget', () => {
   it('should block retries when budget is exhausted', async () => {
     const budget = new RetryBudget({ maxRetries: 2, window: 1000 });
     const fn = vi.fn().mockRejectedValue(new Error('fail'));
