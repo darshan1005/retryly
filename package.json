@@ -1,0 +1,35 @@
+{
+  "name": "retryly",
+  "version": "1.0.0",
+  "description": "A production-grade TypeScript retry package.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "retry",
+    "backoff",
+    "exponential",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT"
+}
