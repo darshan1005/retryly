@@ -1,16 +1,16 @@
-# Retryly
+# Retry-Pro
 
 A production-grade, policy-driven TypeScript retry package.
 
-[![NPM Version](https://img.shields.io/npm/v/memcachify.svg)](https://www.npmjs.com/package/retryly)
+[![NPM Version](https://img.shields.io/npm/v/retry-pro.svg)](https://www.npmjs.com/package/retry-pro)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/darshan1005/retryly)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/darshan1005/retry-pro)
 
 ## Problem Statement
-Retrying failed operations (especially network requests) shouldn't be a random guess. `retryly` provides a structured way to handle failures using a "Policy-First" approach, ensuring that your retry logic is predictable, cancellable, observability-ready, and efficient.
+Retrying failed operations (especially network requests) shouldn't be a random guess. `retry-pro` provides a structured way to handle failures using a "Policy-First" approach, ensuring that your retry logic is predictable, cancellable, observability-ready, and efficient.
 
 ## Why not `p-retry`?
-While `p-retry` is excellent, `retryly` offers profound advantages for production architectures:
+While `p-retry` is excellent, `retry-pro` offers profound advantages for production architectures:
 - **Built-in Policies**: Instead of configuring retries every time, use pre-defined policies (or register your own!).
 - **Middleware Pipeline**: Circuit breakers, hedging, retry budgets, and timeouts are composed seamlessly in a high-performance execution loop.
 - **First-class Cancellation**: Deep integration with `AbortSignal` across the entire retry loop, delay intervals, and native hedging bindings.
@@ -19,14 +19,14 @@ While `p-retry` is excellent, `retryly` offers profound advantages for productio
 ## Installation
 
 ```bash
-npm install retryly
+npm install retry-pro
 ```
 
 ## Basic Examples
 
 ### Simple Usage
 ```typescript
-import { retry } from 'retryly';
+import { retry } from 'retry-pro';
 
 const result = await retry(async (signal) => {
   // Propagate the signal to ensure cancellations and hedging work!
@@ -36,7 +36,7 @@ const result = await retry(async (signal) => {
 
 ### HTTP-Safe Policy (Retries 5xx, Skips 4xx)
 ```typescript
-import { retry } from 'retryly';
+import { retry } from 'retry-pro';
 
 const data = await retry(fetchMyData, {
   policy: 'httpSafe'
@@ -46,7 +46,7 @@ const data = await retry(fetchMyData, {
 ### Runtime Custom Policies
 Define global shared policies explicitly across your app.
 ```typescript
-import { registerPolicy, exponentialStrategy, retry } from 'retryly';
+import { registerPolicy, exponentialStrategy, retry } from 'retry-pro';
 
 registerPolicy('databaseFailover', {
   retries: 3,
@@ -88,7 +88,7 @@ await retry(fn, {
 The Circuit Breaker protects your system from cascading failures by stopping requests to an already failing downstream service.
 
 ```typescript
-import { retry, CircuitBreaker } from 'retryly';
+import { retry, CircuitBreaker } from 'retry-pro';
 
 const apiCircuit = new CircuitBreaker({ 
     failureThreshold: 3, 
@@ -103,7 +103,7 @@ await retry(fetchUsers, { circuitBreaker: apiCircuit });
 
 A Retry Budget prevents "retry storms" by limiting the total number of retries allowed over a sliding time window. 
 ```typescript
-import { retry, RetryBudget } from 'retryly';
+import { retry, RetryBudget } from 'retry-pro';
 
 const dbBudget = new RetryBudget({ maxRetries: 50, window: 60000 });
 
@@ -142,7 +142,7 @@ await retry(async (signal) => fetch('/data', { signal }), {
 
 Wrap traces smoothly safely importing the sub-module.
 ```typescript
-import { withTracing } from 'retryly/otel';
+import { withTracing } from 'retry-pro/otel';
 import { retryOptions } from './config';
 
 // Start operations, emitting Span events upon successful completion or delay.
@@ -166,7 +166,7 @@ await retry(criticalAction, { priority: 'high' });
 For critical production services, combining all features provides maximum resilience:
 
 ```typescript
-import { retry, CircuitBreaker, RetryBudget } from 'retryly';
+import { retry, CircuitBreaker, RetryBudget } from 'retry-pro';
 
 const apiCircuit = new CircuitBreaker({ failureThreshold: 5, resetTimeout: 30000 });
 const apiBudget = new RetryBudget({ maxRetries: 50, window: 60000 });
