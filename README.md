@@ -2,6 +2,10 @@
 
 A production-grade, policy-driven TypeScript retry package.
 
+[![NPM Version](https://img.shields.io/npm/v/memcachify.svg)](https://www.npmjs.com/package/retryly)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/darshan1005/retryly)
+
 ## Problem Statement
 Retrying failed operations (especially network requests) shouldn't be a random guess. `retryly` provides a structured way to handle failures using a "Policy-First" approach, ensuring that your retry logic is predictable, cancellable, and efficient.
 
