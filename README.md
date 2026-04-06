@@ -7,20 +7,14 @@ A production-grade, policy-driven TypeScript retry package.
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/darshan1005/retryly)
 
 ## Problem Statement
-Retrying failed operations (especially network requests) shouldn't be a random guess. `retryly` provides a structured way to handle failures using a "Policy-First" approach, ensuring that your retry logic is predictable, cancellable, and efficient.
+Retrying failed operations (especially network requests) shouldn't be a random guess. `retryly` provides a structured way to handle failures using a "Policy-First" approach, ensuring that your retry logic is predictable, cancellable, observability-ready, and efficient.
 
 ## Why not `p-retry`?
-While `p-retry` is excellent, `retryly` offers several advantages:
-- **Built-in Policies**: Instead of configuring retries every time, use pre-defined policies like `httpSafe` or `networkOnly`.
-- **First-class Cancellation**: Deep integration with `AbortSignal` across the entire retry loop and delay intervals.
-- **Strong Typing**: 100% TypeScript with refined context for success and failure lifecycle hooks.
-- **Strategy Modularity**: Easily wrap strategies with jitter or combine them without boilerplate.
-
-## Policy System
-The core differentiator of `retryly` is its Policy System. A policy defines:
-- How many times to retry.
-- The delay strategy to use.
-- A condition function to decide if a specific error is retryable.
+While `p-retry` is excellent, `retryly` offers profound advantages for production architectures:
+- **Built-in Policies**: Instead of configuring retries every time, use pre-defined policies (or register your own!).
+- **Middleware Pipeline**: Circuit breakers, hedging, retry budgets, and timeouts are composed seamlessly in a high-performance execution loop.
+- **First-class Cancellation**: Deep integration with `AbortSignal` across the entire retry loop, delay intervals, and native hedging bindings.
+- **OpenTelemetry Ready**: Opt-in zero-dependency robust OTEL metric capturing natively inside your traces.
 
 ## Installation
 
@@ -28,14 +22,15 @@ The core differentiator of `retryly` is its Policy System. A policy defines:
 npm install retryly
 ```
 
-## Examples
+## Basic Examples
 
-### Basic Usage
+### Simple Usage
 ```typescript
 import { retry } from 'retryly';
 
-const result = await retry(async () => {
-  return await fetchData();
+const result = await retry(async (signal) => {
+  // Propagate the signal to ensure cancellations and hedging work!
+  return await fetchData(signal); 
 }, { retries: 5 });
 ```
 
@@ -48,116 +43,111 @@ const data = await retry(fetchMyData, {
 });
 ```
 
-### Custom Strategy with Jitter
+### Runtime Custom Policies
+Define global shared policies explicitly across your app.
 ```typescript
-import { retry, exponentialStrategy, withJitter } from 'retryly';
+import { registerPolicy, exponentialStrategy, retry } from 'retryly';
 
-const customStrategy = withJitter(exponentialStrategy(1000, 2), 0.2);
+registerPolicy('databaseFailover', {
+  retries: 3,
+  strategy: exponentialStrategy(500, 2, 10000), // Base 500ms, max 10s
+  shouldRetry: (err) => err.code === 'ECONNRESET'
+});
 
-await retry(doSomething, {
-  strategy: customStrategy,
-  retries: 3
+await retry(queryDb, { policy: 'databaseFailover' });
+```
+
+## Advanced Features
+
+### Fallbacks & Attempt Timeouts
+Ensure requests never hang your pipeline natively.
+```typescript
+const result = await retry(fetchPrices, {
+  retries: 2,
+  attemptTimeout: 5000,    // Hard crash each attempt if it takes > 5s
+  fallback: () => ({ cached: true, price: 50 }) // Safety value after exhaustion
 });
 ```
 
-### Cancellation with AbortSignal
+### Lifecycle Context Hooks
+A rich contextual payload drives all hooks out-of-the-box.
 ```typescript
-const controller = new AbortController();
-
-// This will stop retrying and clear any active delay timers immediately
-const promise = retry(task, { signal: controller.signal });
-
-controller.abort();
+await retry(fn, {
+  retries: 3,
+  onRetry: async ({ attempt, strategyDelayMs, totalElapsedMs, error }) => {
+    console.warn(`Retrying in ${strategyDelayMs}ms. Running for ${totalElapsedMs}ms.`);
+  },
+  onFailure: async (ctx) => {
+    console.error(`Final failure after ${ctx.attempt} attempts!`, ctx.error);
+  }
+});
 ```
 
-## Circuit Breaker
+### Circuit Breaker
 
 The Circuit Breaker protects your system from cascading failures by stopping requests to an already failing downstream service.
 
-### States
-- **CLOSED**: The circuit is functional and allowing requests. Failures are tracked.
-- **OPEN**: The state reached after the `failureThreshold` is exceeded. All requests are blocked for the duration of the `resetTimeout`.
-- **HALF_OPEN**: After the timeout, the circuit allows a limited number of requests (defined by `successThreshold`) to test if the service has recovered.
-
-### Usage Examples
-
-#### Basic Configuration
-```typescript
-await retry(fn, {
-  policy: "httpSafe",
-  circuitBreaker: {
-    failureThreshold: 5,
-    resetTimeout: 10000 // 10 seconds
-  }
-});
-```
-
-#### Shared Circuit (Recommended for microservices)
-Using a shared instance ensures that multiple distinct calls to the same failing service are all blocked together.
 ```typescript
 import { retry, CircuitBreaker } from 'retryly';
 
-const apiCircuit = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
-
-// Both calls share the same failure state
-await retry(fetchUsers, { circuitBreaker: apiCircuit });
-await retry(fetchPosts, { circuitBreaker: apiCircuit });
-```
-
-> [!WARNING]
-> Do not use a shared circuit breaker for unrelated services, as failures in one service will block requests to the other.
-
-## Retry Budget
-
-A Retry Budget prevents "retry storms" by limiting the total number of retries allowed over a sliding time window. This is essential for protecting your infrastructure during high-load failure scenarios.
-
-### Configuration
-```typescript
-await retry(fn, {
-  retryBudget: {
-    maxRetries: 10,   // Max 10 retries...
-    window: 60000    // ...per minute
-  }
+const apiCircuit = new CircuitBreaker({ 
+    failureThreshold: 3, 
+    resetTimeout: 30000,
+    window: 60000 // Only count failures within a rolling 60s window
 });
+
+await retry(fetchUsers, { circuitBreaker: apiCircuit });
 ```
 
-### Shared Budget
-Highly recommended for shared resources (e.g., all calls to a specific database).
+### Retry Budget
+
+A Retry Budget prevents "retry storms" by limiting the total number of retries allowed over a sliding time window. 
 ```typescript
-const dbBudget = new RetryBudget({ maxRetries: 100, window: 60000 });
+import { retry, RetryBudget } from 'retryly';
 
-await retry(query1, { retryBudget: dbBudget });
-await retry(query2, { retryBudget: dbBudget });
+const dbBudget = new RetryBudget({ maxRetries: 50, window: 60000 });
+
+// If DB goes fully down, we stop spamming after ~50 global retries
+await retry(queryCluster, { retryBudget: dbBudget });
 ```
 
-## Adaptive Retry
+### Adaptive Delay Strategy
 
-Adaptive mode automatically adjusts backoff delays based on the error type:
-- **Rate Limited (429)**: Uses a slow, aggressive exponential backoff.
+Adaptive mode automatically adjusts backoff delays based on error context by deeply inspecting error types and `Retry-After` HTTP headers:
+- **Rate Limited (429)**: Backs off precisely using header timestamps/seconds.
 - **Network Errors**: Uses a fast, tactical backoff for transient blips.
 - **Service Errors (5xx)**: Uses standard exponential backoff.
 
-### Usage
 ```typescript
 await retry(apiCall, { adaptive: true });
 ```
 
-## Request Hedging
+### Request Hedging
 
-Request hedging (predictive retries) reduces tail latency by launching a duplicate request if the original has not responded within a certain threshold.
+Request hedging (predictive retries) reduces tail latency by launching a duplicate request if the original has not responded within a certain threshold. The first request to fulfill resolves the promise and automatically `aborts` the lagging requests.
 
-### Configuration
 ```typescript
-await retry(fetchData, {
+await retry(async (signal) => fetch('/data', { signal }), {
   hedging: {
     enabled: true,
-    delay: 200,      // Launch hedge after 200ms
-    maxHedges: 1     // Launch at most 1 hedge
+    delay: 200,             // Launch alternate request after 200ms
+    concurrencyLimit: 20    // Restrict global parallel hedges
   }
 });
 ```
 > [!CAUTION]
-> Hedging increases the total load on your downstream services. Use it only for slow, idempotent APIs and monitor your infrastructure closely.
+> Hedging increases the total load on your downstream services. Use it only for safe, idempotent operations.
+
+### OpenTelemetry Integration
+
+Wrap traces smoothly safely importing the sub-module.
+```typescript
+import { withTracing } from 'retryly/otel';
+import { retryOptions } from './config';
+
+// Start operations, emitting Span events upon successful completion or delay.
+const data = await withTracing(fetchDatabase, retryOptions, yourOtelTracer);
+```
 
 ## Priority System
 
@@ -167,7 +157,6 @@ The Priority System allows you to tune the library's sensitivity based on the im
 - **`low`**: Slower delays (50% increase) and fewer retries (-1).
 - **`normal`**: Default behavior.
 
-### Usage
 ```typescript
 await retry(criticalAction, { priority: 'high' });
 ```
@@ -183,9 +172,10 @@ const apiCircuit = new CircuitBreaker({ failureThreshold: 5, resetTimeout: 30000
 const apiBudget = new RetryBudget({ maxRetries: 50, window: 60000 });
 
 try {
-  const data = await retry(fetchData, {
+  const data = await retry(async (signal) => axios.get('/api', { signal }), {
     policy: 'httpSafe',
     priority: 'high',
+    attemptTimeout: 5000,
     hedging: {
       enabled: true,
       delay: 250
@@ -196,25 +186,13 @@ try {
   });
 } catch (error) {
   if (error instanceof CircuitOpenError) {
-    // Handle circuit open (e.g. return cached data)
+    // Handle circuit open
   }
 }
 ```
 
-## API Reference
-
-### `retry(fn, options)`
-- `fn`: An async function to execute.
-- `options`:
-    - `retries`: Max retry count.
-    - `policy`: Name of built-in policy (`httpSafe`, `networkOnly`, `aggressive`, `safe`) or a custom policy object.
-    - `strategy`: A function `(attempt: number) => number`.
-    - `shouldRetry`: A function `(error: unknown, attempt: number) => boolean`.
-    - `signal`: An `AbortSignal`.
-    - `onRetry`, `onSuccess`, `onFailure`: Lifecycle hooks.
-
 ## Safety Warning (Idempotency)
-**IMPORTANT**: Only retry operations that are **idempotent**. Retrying a non-idempotent operation (like a non-idempotent POST request) can result in duplicate data or side effects if the previous attempt actually succeeded but failed to return a response.
+**IMPORTANT**: Only retry operations that are **idempotent**. Retrying a non-idempotent operation (like a POST request creating records) can result in duplicate logic executing if the previous attempt actually succeeded but failed to return a response gracefully due to a network timeout.
 
 ## License
 MIT
