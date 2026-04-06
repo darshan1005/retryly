@@ -31,10 +31,31 @@
     "vitest": "^1.0.0"
   },
   "keywords": [
+    "retry-pro",
     "retry",
     "backoff",
     "exponential",
-    "typescript"
+    "typescript",
+    "circuit-breaker",
+    "retry-budget",
+    "hedging",
+    "adaptive-delay",
+    "otel",
+    "priority",
+    "fallback",
+    "timeout",
+    "cancellation",
+    "observability",
+    "performance",
+    "resilience",
+    "fault-tolerance",
+    "reliability",
+    "stability",
+    "robustness",
+    "production-grade",
+    "policy-driven",
+    "middleware",
+    "pipeline"
   ],
   "author": "Darshan Battula",
   "license": "MIT"
