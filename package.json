@@ -1,7 +1,7 @@
 {
-  "name": "retryly",
+  "name": "retry-pro",
   "version": "1.0.0",
-  "description": "A production-grade TypeScript retry package.",
+  "description": "A production-grade, policy-driven TypeScript retry package.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -36,6 +36,6 @@
     "exponential",
     "typescript"
   ],
-  "author": "",
+  "author": "Darshan Battula",
   "license": "MIT"
 }
