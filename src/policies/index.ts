@@ -46,6 +46,16 @@ export const BUILTIN_POLICIES: Record<string, RetryPolicy> = {
 };
 
 /**
+ * Registers a new retry policy by name for runtime reuse.
+ */
+export function registerPolicy(name: string, policy: RetryPolicy): void {
+  if (BUILTIN_POLICIES[name]) {
+    throw new Error(`Policy '${name}' is already registered. Use a unique name.`);
+  }
+  BUILTIN_POLICIES[name] = policy;
+}
+
+/**
  * Resolves a policy from options.
  * Matches built-in policy names or merges custom policy objects.
  */
@@ -55,7 +65,10 @@ export function resolvePolicy(options: RetryOptions): RetryPolicy {
   let basePolicy: RetryPolicy;
 
   if (typeof policy === 'string') {
-    basePolicy = BUILTIN_POLICIES[policy] || BUILTIN_POLICIES.safe;
+    if (!BUILTIN_POLICIES[policy]) {
+      throw new Error(`Unknown retry policy: '${policy}'. Use registerPolicy() to add custom policies.`);
+    }
+    basePolicy = BUILTIN_POLICIES[policy];
   } else if (policy && typeof policy === 'object') {
     // If a partial policy is provided, start with 'safe' as default and merge
     basePolicy = {

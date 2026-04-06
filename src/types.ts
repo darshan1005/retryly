@@ -3,17 +3,24 @@ import { RetryBudgetInterface, RetryBudgetOptions } from './budget/types';
 
 export interface RetryContext {
   attempt: number;
+  totalElapsedMs: number;
+  policyName?: string;
+  strategyDelayMs?: number;
   error?: unknown;
   signal?: AbortSignal;
 }
 
 export interface SuccessContext<T> {
   attempt: number;
+  totalElapsedMs: number;
+  policyName?: string;
   result: T;
 }
 
 export interface FailureContext {
   attempt: number;
+  totalElapsedMs: number;
+  policyName?: string;
   error: unknown;
 }
 
@@ -32,7 +39,7 @@ export interface RetryOptions {
   retries?: number;
   
   /** Name of a built-in policy or a custom policy configuration */
-  policy?: 'httpSafe' | 'networkOnly' | 'aggressive' | 'safe' | Partial<RetryPolicy>;
+  policy?: 'httpSafe' | 'networkOnly' | 'aggressive' | 'safe' | string | Partial<RetryPolicy>;
   
   /** Custom delay strategy function */
   strategy?: DelayStrategy;
@@ -44,13 +51,19 @@ export interface RetryOptions {
   signal?: AbortSignal;
   
   /** Hook executed just before a new attempt is made after a failure */
-  onRetry?: (error: unknown, attempt: number, delayMs: number) => void | Promise<void>;
+  onRetry?: (context: RetryContext) => void | Promise<void>;
   
   /** Hook executed when the operation succeeds */
   onSuccess?: <T>(context: SuccessContext<T>) => void | Promise<void>;
   
   /** Hook executed when the operation exhausts all retries and fails */
   onFailure?: (context: FailureContext) => void | Promise<void>;
+
+  /** Timeout per attempt in milliseconds */
+  attemptTimeout?: number;
+
+  /** Fallback value or async function to return when all retries fail */
+  fallback?: unknown | (() => unknown | Promise<unknown>);
 
   /** Circuit breaker instance or configuration */
   circuitBreaker?: CircuitBreakerOptions | CircuitBreakerInterface;
@@ -69,6 +82,8 @@ export interface RetryOptions {
     delay: number;
     /** Maximum number of parallel attempts (default 1) */
     maxHedges?: number;
+    /** Concurrency limit for hedging parallel runs */
+    concurrencyLimit?: number;
   };
 
   /** Priority of the request for automated tuning */

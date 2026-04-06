@@ -4,7 +4,6 @@ import { RetryBudgetInterface } from '../budget/types';
 
 // Global counter for active hedging requests to prevent infrastructure overload
 let activeHedges = 0;
-const GLOBAL_HEDGE_LIMIT = 50;
 
 /**
  * Executes an operation with hedging.
@@ -12,20 +11,25 @@ const GLOBAL_HEDGE_LIMIT = 50;
  * Returns the first successful response and cancels others.
  * 
  * Safety:
- * - Respects global concurrency limit (activeHedges)
+ * - Respects per-call concurrency limit (options.hedging.concurrencyLimit)
  * - Respects RetryBudget and CircuitBreaker for each hedge attempt
  */
 export async function executeWithHedging<T>(
-  fn: () => Promise<T>,
+  fn: (signal?: AbortSignal) => Promise<T>,
   options: RetryOptions,
   circuit?: CircuitBreakerInterface,
   budget?: RetryBudgetInterface
 ): Promise<T> {
   const { hedging, signal: externalSignal } = options;
 
-  // Fallback if hedging is not configured, disabled, or limit reached
-  if (!hedging || !hedging.enabled || activeHedges >= GLOBAL_HEDGE_LIMIT) {
-    return fn();
+  // Fallback if hedging is not configured or disabled
+  if (!hedging || !hedging.enabled) {
+    return fn(externalSignal);
+  }
+
+  const concurrencyLimit = hedging.concurrencyLimit ?? Infinity;
+  if (activeHedges >= concurrencyLimit) {
+    return fn(externalSignal);
   }
 
   const { delay: hedgeDelay, maxHedges = 1 } = hedging;
@@ -63,15 +67,10 @@ export async function executeWithHedging<T>(
           return;
         }
 
-        // 2. Check Retry Budget
-        if (budget && !budget.canRetry()) {
+        // 2. Check and Increment Retry Budget atomically
+        if (budget && !budget.consume()) {
           // If budget is exhausted, skip the hedge.
           return;
-        }
-
-        // 3. Increment budget usage for the hedge
-        if (budget) {
-          budget.recordRetry();
         }
       }
 
@@ -81,7 +80,7 @@ export async function executeWithHedging<T>(
       activeHedges++;
 
       try {
-        const result = await fn();
+        const result = await fn(controller.signal);
         
         if (!completed) {
           cleanup();

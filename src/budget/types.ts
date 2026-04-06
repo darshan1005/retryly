@@ -3,11 +3,23 @@ export interface RetryBudgetOptions {
   maxRetries: number;
   /** Window duration in milliseconds */
   window: number;
+  /** Callback triggered when the budget is exhausted */
+  onExhausted?: () => void;
+}
+
+export interface RetryBudgetStats {
+  remaining: number;
+  resetIn: number;
+  used: number;
 }
 
 export interface RetryBudgetInterface {
-  /** Returns true if a retry attempt is allowed within the current budget */
-  canRetry(): boolean;
-  /** Records a retry attempt in the current budget */
-  recordRetry(): void;
+  /** Atomically checks and decrements the budget. Returns true if allowed. */
+  consume(): boolean;
+  /** Returns current stats of the budget */
+  getStats(): RetryBudgetStats;
+  
+  /** Legacy methods (deprecated internally) */
+  canRetry?(): boolean;
+  recordRetry?(): void;
 }

@@ -7,8 +7,8 @@ import { DelayStrategy } from '../types';
  * @param baseDelay Starting delay in milliseconds
  * @param factor Exponential factor (default: 2)
  */
-export const exponentialStrategy = (baseDelay: number, factor: number = 2): DelayStrategy => {
+export const exponentialStrategy = (baseDelay: number, factor: number = 2, maxDelay: number = 30000): DelayStrategy => {
   return (attempt: number): number => {
-    return baseDelay * Math.pow(factor, attempt);
+    return Math.min(baseDelay * Math.pow(factor, attempt), maxDelay);
   };
 };

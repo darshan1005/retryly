@@ -6,8 +6,8 @@ import { DelayStrategy } from '../types';
  * 
  * @param delay Constant delay in milliseconds
  */
-export const fixedStrategy = (delay: number): DelayStrategy => {
+export const fixedStrategy = (delay: number, maxDelay: number = 30000): DelayStrategy => {
   return (): number => {
-    return delay;
+    return Math.min(delay, maxDelay);
   };
 };

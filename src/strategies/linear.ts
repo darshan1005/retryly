@@ -7,8 +7,8 @@ import { DelayStrategy } from '../types';
  * @param baseDelay Starting delay in milliseconds
  * @param increment Amount to add per attempt
  */
-export const linearStrategy = (baseDelay: number, increment: number): DelayStrategy => {
+export const linearStrategy = (baseDelay: number, increment: number, maxDelay: number = 30000): DelayStrategy => {
   return (attempt: number): number => {
-    return baseDelay + (increment * attempt);
+    return Math.min(baseDelay + (increment * attempt), maxDelay);
   };
 };

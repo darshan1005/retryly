@@ -1,4 +1,4 @@
-import { RetryOptions, FailureContext } from '../types';
+import { RetryOptions, FailureContext, RetryContext, SuccessContext } from '../types';
 import { resolvePolicy } from '../policies';
 import { delay } from '../utils/delay';
 import { checkSignal, AbortError, RetryError, CircuitOpenError } from '../utils/errors';
@@ -8,6 +8,14 @@ import { adaptiveDelay } from '../adaptive/strategy';
 import { executeWithHedging } from '../hedging/executor';
 import { resolvePriority } from '../priority/resolver';
 
+export interface RetryMiddleware {
+  name: string;
+  beforeAttempt?: (ctx: RetryContext) => void | Promise<void>;
+  afterSuccess?: <T>(ctx: SuccessContext<T>) => void | Promise<void>;
+  afterFailure?: (ctx: FailureContext) => void | Promise<void>;
+  execute?: <T>(ctx: RetryContext, next: () => Promise<T>) => Promise<T>;
+}
+
 /**
  * Executes an asynchronous function with retry logic based on the provided options.
  * 
@@ -16,112 +24,173 @@ import { resolvePriority } from '../priority/resolver';
  * @returns Result of the function
  */
 export async function retry<T>(
-  fn: () => Promise<T>,
+  fn: (signal?: AbortSignal) => Promise<T>,
   options: RetryOptions = {}
 ): Promise<T> {
-  const prioritizedOptions = resolvePriority(options);
-  const policy = resolvePolicy(prioritizedOptions);
-  const circuit = resolveCircuit(prioritizedOptions);
-  const budget = resolveRetryBudget(prioritizedOptions);
-  const { onRetry, onSuccess, onFailure, signal } = prioritizedOptions;
+  const opts = resolvePriority(options);
+  const policy = resolvePolicy(opts);
+  const circuit = resolveCircuit(opts);
+  const budget = resolveRetryBudget(opts);
+  const { onRetry, onSuccess, onFailure, signal, attemptTimeout, fallback, adaptive } = opts;
+  const policyName = typeof opts.policy === 'string' ? opts.policy : undefined;
+  
+  const startTime = Date.now();
   let lastError: unknown;
 
+  // Build pipeline
+  const middlewares: RetryMiddleware[] = [];
+
+  // 1. Budget Middleware
+  if (budget) {
+    middlewares.push({
+      name: 'Budget',
+      beforeAttempt: (ctx) => {
+        if (ctx.attempt > 0 && !budget.consume()) {
+          throw new Error('Retry budget exhausted');
+        }
+      }
+    });
+  }
+
+  // 2. Circuit Breaker Middleware
+  if (circuit) {
+    middlewares.push({
+      name: 'CircuitBreaker',
+      beforeAttempt: () => {
+        if (!circuit.canExecute()) throw new CircuitOpenError();
+      },
+      afterSuccess: () => circuit.onSuccess(),
+      afterFailure: (ctx) => {
+        // Only trigger failure on the last attempt or if we shouldn't retry
+        if (ctx.attempt === policy.retries || !policy.shouldRetry(ctx.error, ctx.attempt)) {
+            circuit.onFailure();
+        }
+      }
+    });
+  }
+
+  // 3. Hooks Middleware
+  middlewares.push({
+    name: 'Hooks',
+    afterSuccess: async (ctx) => {
+      if (onSuccess) await onSuccess(ctx);
+    },
+    afterFailure: async (ctx) => {
+      if (onFailure) await onFailure(ctx);
+    }
+  });
+
+  // Compose execution
+  const executeAttempt = async (ctx: RetryContext): Promise<T> => {
+    let currentExecute = async () => {
+      // Wrap fn with timeout
+      const fnWithTimeout = async (sig?: AbortSignal) => {
+        if (!attemptTimeout) return fn(sig);
+        return new Promise<T>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`Attempt timed out after ${attemptTimeout}ms`)), attemptTimeout);
+          fn(sig).then(
+            res => { clearTimeout(timer); resolve(res); },
+            err => { clearTimeout(timer); reject(err); }
+          );
+        });
+      };
+
+      return executeWithHedging(fnWithTimeout, opts, circuit, budget);
+    };
+
+    // Apply execute middlewares inside out
+    for (let i = middlewares.length - 1; i >= 0; i--) {
+      const m = middlewares[i];
+      if (m.execute) {
+        const next = currentExecute;
+        currentExecute = () => m.execute!(ctx, next);
+      }
+    }
+    return currentExecute();
+  };
+
+  // Run the retry loop
   for (let attempt = 0; attempt <= policy.retries; attempt++) {
+    const ctx: RetryContext = {
+      attempt,
+      totalElapsedMs: Date.now() - startTime,
+      policyName,
+      signal
+    };
+
     try {
-      // Check if this is a retry (not the first attempt) and if budget is exhausted
-      if (attempt > 0 && budget && !budget.canRetry()) {
-        // We handle this inside the catch block for cleaner final failure reporting
-        throw new Error('Retry budget exhausted');
-      }
-
-      // Check circuit breaker before each attempt
-      if (circuit && !circuit.canExecute()) {
-        throw new CircuitOpenError();
-      }
-
-      // Check if aborted before starting an attempt
       checkSignal(signal);
 
-      // Execute the operation (with hedging if enabled)
-      // Safety: We pass the circuit and budget so hedging can respect their states
-      const result = await executeWithHedging(fn, prioritizedOptions, circuit, budget);
-
-      // Trigger circuit breaker success
-      if (circuit) {
-        circuit.onSuccess();
+      // Run beforeAttempt hooks
+      for (const m of middlewares) {
+        if (m.beforeAttempt) await m.beforeAttempt(ctx);
       }
 
-      // Trigger success hook if provided
-      if (onSuccess) {
-        await onSuccess({ attempt, result });
+      const result = await executeAttempt(ctx);
+
+      const successCtx: SuccessContext<T> = {
+        attempt,
+        totalElapsedMs: Date.now() - startTime,
+        policyName,
+        result
+      };
+
+      for (const m of middlewares) {
+        if (m.afterSuccess) await m.afterSuccess(successCtx);
       }
 
       return result;
     } catch (error: any) {
       lastError = error;
 
-      // Map DOMException/AbortError to our custom AbortError if needed
       if (error?.name === 'AbortError' || error instanceof AbortError) {
-        if (onFailure) {
-          await onFailure({ attempt, error });
+        for (const m of middlewares) {
+            if (m.afterFailure) await m.afterFailure({ attempt, totalElapsedMs: Date.now() - startTime, policyName, error });
         }
         throw error;
       }
 
-      // If it's a CircuitOpenError or Budget Exhausted, just throw it 
-      // (without contributing to circuit failure or hooks in case of budget)
       if (error instanceof CircuitOpenError || error.message === 'Retry budget exhausted') {
         throw error;
       }
 
-      // Check if we should stop: 
-      // 1. All retries exhausted
-      // 2. Policy says "don't retry" based on the error
       const isLastAttempt = attempt === policy.retries;
       const shouldRetry = policy.shouldRetry(error, attempt);
 
-      if (isLastAttempt || !shouldRetry) {
-        // Trigger circuit breaker failure on FINAL failure
-        if (circuit) {
-          circuit.onFailure();
-        }
+      const failureCtx: FailureContext = {
+        attempt,
+        totalElapsedMs: Date.now() - startTime,
+        policyName,
+        error
+      };
 
-        // Trigger failure hook if provided before throwing
-        if (onFailure) {
-          await onFailure({ attempt, error });
+      for (const m of middlewares) {
+        if (m.afterFailure) await m.afterFailure(failureCtx);
+      }
+
+      if (isLastAttempt || !shouldRetry) {
+        if (isLastAttempt && fallback !== undefined) {
+          return typeof fallback === 'function' ? await fallback() : fallback as T;
         }
         
         if (isLastAttempt) {
-          throw new RetryError(
-            `Operation failed after ${attempt} retries: ${error.message || 'Unknown error'}`,
-            attempt,
-            error
-          );
+            throw new RetryError(`Operation failed after ${attempt} retries: ${error.message || 'Unknown error'}`, attempt, error);
         }
-
         throw error;
       }
 
-      // Record retry in budget before waiting
-      if (budget) {
-        budget.recordRetry();
-      }
+      const delayMs = adaptive ? adaptiveDelay(error, attempt) : policy.strategy(attempt);
+      ctx.strategyDelayMs = delayMs;
+      ctx.error = error;
+      ctx.totalElapsedMs = Date.now() - startTime;
 
-      // Calculate wait time: adaptive or policy strategy
-      const delayMs = prioritizedOptions.adaptive 
-        ? adaptiveDelay(error, attempt) 
-        : policy.strategy(attempt);
-
-      // Trigger retry hook if provided
       if (onRetry) {
-        await onRetry(error, attempt, delayMs);
+        await onRetry(ctx);
       }
 
-      // Wait before next attempt, supporting cancellation
       await delay(delayMs, signal);
     }
   }
 
-  // This line should technically never be reached due to the rethrow in the catch block
   throw lastError;
 }

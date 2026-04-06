@@ -7,6 +7,10 @@ export interface CircuitBreakerOptions {
   successThreshold?: number;
   /** Time in milliseconds before moving from OPEN to HALF_OPEN */
   resetTimeout: number;
+  /** Callback triggered when circuit state changes */
+  onStateChange?: (from: CircuitState, to: CircuitState) => void;
+  /** Rolling window in milliseconds. Failures older than this are discarded. Defaults to resetTimeout. */
+  window?: number;
 }
 
 export interface CircuitBreakerInterface {

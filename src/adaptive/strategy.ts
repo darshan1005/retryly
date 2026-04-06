@@ -8,6 +8,17 @@
 export function adaptiveDelay(error: any, attempt: number): number {
   // 1. Rate Limiting (Too Many Requests) -> Use slow exponential backoff
   if (error?.status === 429 || error?.response?.status === 429) {
+    const retryAfter =
+      error?.response?.headers?.['retry-after'] ||
+      error?.headers?.['retry-after'];
+
+    if (retryAfter) {
+      const parsed = Number(retryAfter);
+      if (!isNaN(parsed)) return parsed * 1000; // seconds -> ms
+      const date = new Date(retryAfter).getTime();
+      if (!isNaN(date)) return Math.max(0, date - Date.now());
+    }
+
     return 1000 * Math.pow(3, attempt);
   }
 

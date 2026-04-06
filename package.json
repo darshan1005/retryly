@@ -8,8 +8,14 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/index.browser.mjs",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./otel": {
+      "types": "./dist/otel.d.ts",
+      "import": "./dist/otel.mjs",
+      "require": "./dist/otel.js"
     }
   },
   "files": [
