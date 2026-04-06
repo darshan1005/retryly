@@ -46,10 +46,13 @@ describe('retry engine', () => {
       shouldRetry: () => true
     });
 
+    const caughtPromise = promise.catch(e => e);
+
     await vi.advanceTimersByTimeAsync(100);
     await vi.advanceTimersByTimeAsync(100);
 
-    await expect(promise).rejects.toThrow(RetryError);
+    const err = await caughtPromise;
+    expect(err).toBeInstanceOf(RetryError);
     expect(fn).toHaveBeenCalledTimes(3);
   });
 
@@ -84,13 +87,16 @@ describe('retry engine', () => {
       signal: controller.signal
     });
 
+    const caughtPromise = promise.catch(e => e);
+
     // Wait for first failure to happen and enter delay
     await vi.advanceTimersByTimeAsync(0); 
     
     // Abort during delay
     controller.abort();
     
-    await expect(promise).rejects.toThrow(AbortError);
+    const err = await caughtPromise;
+    expect(err).toBeInstanceOf(AbortError);
   });
 
   it('should execute lifecycle hooks', async () => {

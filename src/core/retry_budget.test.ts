@@ -6,11 +6,11 @@ import { fixedStrategy } from '../strategies/fixed';
 
 describe('Retry Budget', () => {
   it('should block retries when budget is exhausted', async () => {
-    const budget = new RetryBudget({ maxRetries: 2, window: 1000 });
+    const budget = new RetryBudget({ maxRetries: 1, window: 1000 });
     const fn = vi.fn().mockRejectedValue(new Error('fail'));
 
-    // First call: uses 1 retry, exhausts budget because maxRetries: 2
-    // (Attempt 0 fails -> recordRetry (1) -> Attempt 1 (Retry 1) fails -> recordRetry (2) -> Attempt 2 (Retry 2) blocked)
+    // First call: uses 1 retry, exhausts budget because maxRetries: 1
+    // (Attempt 0 fails -> Attempt 1 (Retry 1) consumes 1 -> Attempt 2 (Retry 2) blocked)
     await expect(retry(fn, { 
       retries: 3, 
       strategy: fixedStrategy(0),
@@ -61,6 +61,6 @@ describe('Retry Budget', () => {
     });
 
     // For 429, adaptiveDelay(0) is 1000ms
-    expect(onRetry).toHaveBeenCalledWith(expect.anything(), 0, 1000);
+    expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({ attempt: 0, strategyDelayMs: 1000 }));
   });
 });

@@ -18,22 +18,28 @@ describe('retry with circuit breaker integration', () => {
     const fn = vi.fn().mockRejectedValue(new Error('fail'));
 
     // 1st final failure (after 1 retry = 2 attempts)
-    await expect(retry(fn, { 
+    const p1 = retry(fn, { 
       retries: 1, 
       strategy: fixedStrategy(0),
       shouldRetry: () => true,
       circuitBreaker: breaker 
-    })).rejects.toThrow();
+    }).catch(e => e);
+
+    await vi.runAllTimersAsync();
+    await expect(p1).resolves.toBeInstanceOf(Error);
     
     expect(breaker.getState()).toBe('CLOSED');
 
     // 2nd final failure
-    await expect(retry(fn, { 
+    const p2 = retry(fn, { 
       retries: 1, 
       strategy: fixedStrategy(0),
       shouldRetry: () => true,
       circuitBreaker: breaker 
-    })).rejects.toThrow();
+    }).catch(e => e);
+
+    await vi.runAllTimersAsync();
+    await expect(p2).resolves.toBeInstanceOf(Error);
 
     expect(breaker.getState()).toBe('OPEN');
   });
@@ -70,12 +76,15 @@ describe('retry with circuit breaker integration', () => {
       .mockResolvedValue('success');
 
     // Should succeed on 2nd attempt, circuit should stay CLOSED
-    const result = await retry(fn, { 
+    const p = retry(fn, { 
       retries: 1, 
       strategy: fixedStrategy(0),
       shouldRetry: () => true,
       circuitBreaker: breaker 
     });
+
+    await vi.runAllTimersAsync();
+    const result = await p;
 
     expect(result).toBe('success');
     expect(breaker.getState()).toBe('CLOSED');

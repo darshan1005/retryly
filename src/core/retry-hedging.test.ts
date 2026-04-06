@@ -56,6 +56,6 @@ describe('Retry Hedging', () => {
     expect(result).toBe('ok');
 
     // onRetry is called with delayMs which should be 500
-    expect(onRetry).toHaveBeenCalledWith(expect.anything(), 0, 500);
+    expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({ attempt: 0, strategyDelayMs: 500 }));
   });
 });

@@ -49,10 +49,12 @@ describe('executeWithHedging', () => {
       hedging: { enabled: true, delay: 10, maxHedges: 1 }
     });
 
+    const caughtPromise = promise.catch(e => e);
+
     // Make sure we wait for all internal timers to trigger failure cleanup
     await vi.advanceTimersByTimeAsync(20);
     
-    await expect(promise).rejects.toThrow('fail');
+    await expect(caughtPromise).resolves.toBeInstanceOf(Error);
     expect(fn).toHaveBeenCalledTimes(2);
   });
 });

@@ -76,7 +76,11 @@ export async function retry<T>(
       if (onSuccess) await onSuccess(ctx);
     },
     afterFailure: async (ctx) => {
-      if (onFailure) await onFailure(ctx);
+      const isLastAttempt = ctx.attempt === policy.retries;
+      const shouldRetry = policy.shouldRetry(ctx.error, ctx.attempt);
+      if (isLastAttempt || !shouldRetry) {
+        if (onFailure) await onFailure(ctx);
+      }
     }
   });
 
