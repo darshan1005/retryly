@@ -4,7 +4,7 @@ A production-grade, policy-driven TypeScript retry library.
 
 [![NPM Version](https://img.shields.io/npm/v/retry-pro.svg)](https://www.npmjs.com/package/retry-pro)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/darshan1005/retry-pro)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/darshan1005/retryly)
 
 ## Overview
 
